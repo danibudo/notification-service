@@ -18,6 +18,7 @@ async function connectWithRetry(onConnected: () => Promise<void>, attempt: numbe
   try {
     const conn = await amqp.connect(config.RABBITMQ_URL);
     const chan = await conn.createChannel();
+    await chan.prefetch(config.RABBITMQ_PREFETCH);
 
     conn.on('error', (err: Error) => {
       logger.error(`RabbitMQ connection error: ${err.message}`);

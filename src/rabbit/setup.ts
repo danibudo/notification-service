@@ -1,5 +1,4 @@
 import { getChannel } from './connection';
-import { config } from '../config';
 import { logger } from '../logger';
 
 const DLX = 'dlx.notification-service';
@@ -72,8 +71,6 @@ export async function setupTopology(): Promise<void> {
   await channel.bindQueue(QUEUES.LOAN_STARTED, LOAN_EXCHANGE, ROUTING_KEYS.LOAN_STARTED);
   await channel.bindQueue(QUEUES.LOAN_ENDED, LOAN_EXCHANGE, ROUTING_KEYS.LOAN_ENDED);
   await channel.bindQueue(QUEUES.LOAN_DUE_REMINDER, LOAN_EXCHANGE, ROUTING_KEYS.LOAN_DUE_REMINDER);
-
-  await channel.prefetch(config.RABBITMQ_PREFETCH);
 
   logger.info('RabbitMQ topology ready');
 }
