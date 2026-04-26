@@ -14,23 +14,22 @@ export const QUEUES = {
   LOAN_DUE_REMINDER: 'notification-service.loan.loan_due_reminder',
 } as const;
 
-const DLQ = {
-  INVITE_TOKEN_GENERATED: `${QUEUES.INVITE_TOKEN_GENERATED}.dlq`,
-  LOAN_APPROVED: `${QUEUES.LOAN_APPROVED}.dlq`,
-  LOAN_REJECTED: `${QUEUES.LOAN_REJECTED}.dlq`,
-  LOAN_STARTED: `${QUEUES.LOAN_STARTED}.dlq`,
-  LOAN_ENDED: `${QUEUES.LOAN_ENDED}.dlq`,
-  LOAN_DUE_REMINDER: `${QUEUES.LOAN_DUE_REMINDER}.dlq`,
-} as const;
+const QUEUE_DEFINITIONS = [
+  { queue: QUEUES.INVITE_TOKEN_GENERATED, exchange: AUTH_EXCHANGE, routingKey: 'auth.invite_token_generated' },
+  { queue: QUEUES.LOAN_APPROVED,          exchange: LOAN_EXCHANGE,  routingKey: 'loan.loan_approved' },
+  { queue: QUEUES.LOAN_REJECTED,          exchange: LOAN_EXCHANGE,  routingKey: 'loan.loan_rejected' },
+  { queue: QUEUES.LOAN_STARTED,           exchange: LOAN_EXCHANGE,  routingKey: 'loan.loan_started' },
+  { queue: QUEUES.LOAN_ENDED,             exchange: LOAN_EXCHANGE,  routingKey: 'loan.loan_ended' },
+  { queue: QUEUES.LOAN_DUE_REMINDER,      exchange: LOAN_EXCHANGE,  routingKey: 'loan.loan_due_reminder' },
+];
 
-const ROUTING_KEYS = {
-  INVITE_TOKEN_GENERATED: 'auth.invite_token_generated',
-  LOAN_APPROVED: 'loan.loan_approved',
-  LOAN_REJECTED: 'loan.loan_rejected',
-  LOAN_STARTED: 'loan.loan_started',
-  LOAN_ENDED: 'loan.loan_ended',
-  LOAN_DUE_REMINDER: 'loan.loan_due_reminder',
-} as const;
+const withDlx = (dlq: string) => ({
+  durable: true,
+  arguments: {
+    'x-dead-letter-exchange': DLX,
+    'x-dead-letter-routing-key': dlq,
+  },
+});
 
 export async function setupTopology(): Promise<void> {
   const channel = getChannel();
@@ -42,35 +41,13 @@ export async function setupTopology(): Promise<void> {
   await channel.checkExchange(AUTH_EXCHANGE);
   await channel.checkExchange(LOAN_EXCHANGE);
 
-  // DLQs — plain durable queues bound to the DLX
-  for (const dlqName of Object.values(DLQ)) {
-    await channel.assertQueue(dlqName, { durable: true });
-    await channel.bindQueue(dlqName, DLX, dlqName);
+  for (const { queue, exchange, routingKey } of QUEUE_DEFINITIONS) {
+    const dlq = `${queue}.dlq`;
+    await channel.assertQueue(dlq, { durable: true });
+    await channel.bindQueue(dlq, DLX, dlq);
+    await channel.assertQueue(queue, withDlx(dlq));
+    await channel.bindQueue(queue, exchange, routingKey);
   }
-
-  // Main queues with DLX routing
-  const withDlx = (dlqRoutingKey: string) => ({
-    durable: true,
-    arguments: {
-      'x-dead-letter-exchange': DLX,
-      'x-dead-letter-routing-key': dlqRoutingKey,
-    },
-  });
-
-  await channel.assertQueue(QUEUES.INVITE_TOKEN_GENERATED, withDlx(DLQ.INVITE_TOKEN_GENERATED));
-  await channel.assertQueue(QUEUES.LOAN_APPROVED, withDlx(DLQ.LOAN_APPROVED));
-  await channel.assertQueue(QUEUES.LOAN_REJECTED, withDlx(DLQ.LOAN_REJECTED));
-  await channel.assertQueue(QUEUES.LOAN_STARTED, withDlx(DLQ.LOAN_STARTED));
-  await channel.assertQueue(QUEUES.LOAN_ENDED, withDlx(DLQ.LOAN_ENDED));
-  await channel.assertQueue(QUEUES.LOAN_DUE_REMINDER, withDlx(DLQ.LOAN_DUE_REMINDER));
-
-  // Bindings
-  await channel.bindQueue(QUEUES.INVITE_TOKEN_GENERATED, AUTH_EXCHANGE, ROUTING_KEYS.INVITE_TOKEN_GENERATED);
-  await channel.bindQueue(QUEUES.LOAN_APPROVED, LOAN_EXCHANGE, ROUTING_KEYS.LOAN_APPROVED);
-  await channel.bindQueue(QUEUES.LOAN_REJECTED, LOAN_EXCHANGE, ROUTING_KEYS.LOAN_REJECTED);
-  await channel.bindQueue(QUEUES.LOAN_STARTED, LOAN_EXCHANGE, ROUTING_KEYS.LOAN_STARTED);
-  await channel.bindQueue(QUEUES.LOAN_ENDED, LOAN_EXCHANGE, ROUTING_KEYS.LOAN_ENDED);
-  await channel.bindQueue(QUEUES.LOAN_DUE_REMINDER, LOAN_EXCHANGE, ROUTING_KEYS.LOAN_DUE_REMINDER);
 
   logger.info('RabbitMQ topology ready');
 }
